@@ -1,5 +1,5 @@
 //
-//  GXDebugView.swift
+//  PTDebugView.swift
 //  KidReading
 //
 //  Created by zoe on 2019/6/17.
@@ -10,22 +10,28 @@ import Foundation
 import GGXSwiftExtension
 import SnapKit
 
-public enum GXDebugViewButtonEvent {
-    case ChangeUrl(GXDebugView)
+public enum PTDebugViewButtonEvent {
+    case ChangeUrl(PTDebugView)
     case ReloadWeb
     case pkgAction(Int) //离线包操作
     case otherAction(Int) //其他按钮操作
 }
 
-public typealias DebugButtonEvent = (_ event: GXDebugViewButtonEvent) -> Void
+//PTShowCorner
+public enum TapShowCorner {
+    case leftBottom
+    case rightUp
+}
+
+public typealias DebugButtonEvent = (_ event: PTDebugViewButtonEvent) -> Void
 
 var web_log = ""
 
-public class GXDebugView: UIView {
+public class PTDebugView: UIView {
     
     private var debugTextView =  UITextView.init()
     
-    private var clickButtonEvent :((GXDebugViewButtonEvent)->Void)? = nil
+    private var clickButtonEvent :((PTDebugViewButtonEvent)->Void)? = nil
     
     public var reloadButtonEvent :DebugButtonEvent?
     
@@ -33,14 +39,18 @@ public class GXDebugView: UIView {
 //    public var defaultApiUrl: String = ""
 //    public var baseWebUrl: String = ""
     
+    public var tapCorner: TapShowCorner = .leftBottom
+    
+    var actionBtnTag = 0
+    
     public static func addLog(_ log : String) {
 #if DEBUG
         let wStr = "\n-------\(Date.getCurrentDateStr("yyyy-MM-dd HH:mm:ss SSS"))日志-------\n" + log
         web_log = wStr + web_log
-//        ZKWLog.Log(wStr)
+        ZKWLog.Log(wStr)
 #endif
     }
-    public func supportIn(superView: UIView ,apiURL: String = "", debugEvent :@escaping (GXDebugViewButtonEvent)->Void) {
+    public func supportIn(superView: UIView ,apiURL: String = "", debugEvent :@escaping (PTDebugViewButtonEvent)->Void) {
         superView.addSubview(self)
         self.clickButtonEvent = debugEvent
         self.snp.makeConstraints { (maker) in
@@ -51,7 +61,7 @@ public class GXDebugView: UIView {
 //        defaultApiUrl = apiURL
         self.setUI()
         self.isHidden = true
-        
+//        self.backgroundColor = .red
         let tap = UITapGestureRecognizer.init(target: self, action: #selector(clickEvent))
         tap.numberOfTapsRequired = 6
         //        tap.numberOfTouchesRequired = 2
@@ -65,25 +75,30 @@ public class GXDebugView: UIView {
         }
         let translation = tap.location(in:sup )
         let windowHeight = UIApplication.rootWindow?.height
-        if translation.x < 200 && translation.y > (windowHeight ?? 600) - 200 {
-            if self.isHidden {
-                self.isHidden = false
-                //                self.superview?.bringSubviewToFront(self)
-//                let url = "Base URL : " + defaultApiUrl + "\n"
-//                let weburl = "Web  URL : " + baseWebUrl  + "\n"
-//                let appVersion = kAppVersion ?? ""
-//                let appBuildVersion = UserDefaults.webVersion ?? ""
-//                let build = "App Version : " + appVersion + "   web version : " + appBuildVersion  + "\n\n\n"
-                if let info = self.headInfoLog {
-                    self.debugTextView.text = info + web_log
-                } else {
-                    self.debugTextView.text = web_log
-                }
+        //左上角
+        if tapCorner == .leftBottom {
+            if translation.x < 200 && translation.y > (windowHeight ?? 600) - 200 {
+                showDebugView()
             }
+        } else if tapCorner == .rightUp {
+            if (translation.x > (SCREEN_WIDTH - 200)) && (translation.y < 200) {
+                showDebugView()
+            }
+        } else {
+            
         }
     }
     
-    var actionBtnTag = 0
+    func showDebugView() {
+        if self.isHidden {
+            self.isHidden = false
+            if let info = self.headInfoLog {
+                self.debugTextView.text = info + web_log
+            } else {
+                self.debugTextView.text = web_log
+            }
+        }
+    }
     
     private func setUI() {
         self.backgroundColor = UIColor.white
@@ -105,8 +120,7 @@ public class GXDebugView: UIView {
         self.addButton(title: "刷新", right: 10+90, action: #selector(reload))
         self.addButton(title: "切换地址", right: 10+90+90, action: #selector(changeUrl))
         self.addButton(title: "清除log", right: 10+90+90+90, action: #selector(clearLog))
-        self.addButton(title: "打开bridge", right: 10+90+90+90+90, action: #selector(openBridgeCall))
-        //        self.addButton(title: "清WebStore", right: 10+90, top: 60,action: #selector(clearWebCache))
+        self.addButton(title: "分享log", right: 10+90+90+90+90, action: #selector(openBridgeCall))
         self.addButton(title: "启用离线包", right: 10+90+90, top: 60,action: #selector(didOfflineBtnCache(sender:)))
         self.addButton(title: "禁用离线包", right: 10+90+90+90, top:60,action: #selector(didOfflineBtnCache(sender:)))
         self.addButton(title: "清除离线包", right: 10+90+90+90+90, top: 60, action: #selector(didOfflineBtnCache(sender:)))
@@ -158,18 +172,28 @@ public class GXDebugView: UIView {
     
     @objc func changeUrl (){
         if self.clickButtonEvent != nil {
-            self.clickButtonEvent!(GXDebugViewButtonEvent.ChangeUrl(self))
+            self.clickButtonEvent!(PTDebugViewButtonEvent.ChangeUrl(self))
         }
     }
     
     @objc func openBridgeCall(_ sender: UIButton){
         //关闭调试
-        closeDebugView()
-        self.clickButtonEvent?(.otherAction(sender.tag))
+        self.openShareText(text: self.debugTextView.text)
+    }
+    
+    func openShareText(text: String) {
+        let vcc = UIApplication.rootWindow?.rootViewController
+        let activityViewController = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let popover = activityViewController.popoverPresentationController {
+            popover.sourceView = vcc?.view
+            popover.sourceRect = vcc?.view.bounds ?? .zero
+            popover.permittedArrowDirections = [] // 可以设置为无箭头，使其成为全屏弹窗
+        }
+        vcc?.present(activityViewController, animated: true, completion: nil)
     }
     
     @objc func clearWebCache() {
-//        ZKUtils.removeWebsiteDataStore()
+
     }
     
     @objc func openAppTestVc(){
